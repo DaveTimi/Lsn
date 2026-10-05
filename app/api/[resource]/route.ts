@@ -1,0 +1,16 @@
+import { NextRequest } from 'next/server'; import { db } from '@/lib/db'; import { guard,json } from '@/lib/api'; import { audit } from '@/lib/audit';
+const map:any={students:'student',student:'student',parents:'parent',parent:'parent',staff:'staff',classes:'class',class:'class',subjects:'subject',attendance:'attendance',finance:'feeCharge',fees:'feeCharge',payments:'payment',exams:'exam',exam:'exam',results:'result',announcements:'announcement',documents:'document',ids:'idCard',notifications:'notification',messages:'message',timetable:'timetableEntry',subscriptions:'subscription',ledger:'financialTransaction'};
+export async function GET(req:NextRequest,{params}:{params:Promise<{resource:string}>}){const s:any=await guard();if(!s)return json({error:'Unauthorized'},401);const {resource}=await params;const model=map[resource];if(!model)return json({error:'Unknown resource'},404);const rows=await (db as any)[model].findMany({where:{schoolId:s.schoolId},take:500,orderBy:{createdAt:'desc'}}).catch(()=>[]);return json(rows)}
+export async function POST(req:NextRequest,{params}:{params:Promise<{resource:string}>}){const s:any=await guard();if(!s)return json({error:'Unauthorized'},401);const {resource}=await params;const b=await req.json();try{let row:any;const schoolId=s.schoolId;
+if(resource==='student'||resource==='students')row=await db.student.create({data:{schoolId,studentId:b.studentId,firstName:b.firstName,lastName:b.lastName,otherName:b.otherName,phone:b.phone,email:b.email,gender:b.gender}});
+else if(resource==='parent'||resource==='parents')row=await db.parent.create({data:{schoolId,parentId:b.parentId,firstName:b.firstName,lastName:b.lastName,phone:b.phone,email:b.email}});
+else if(resource==='staff')row=await db.staff.create({data:{schoolId,staffId:b.staffId,firstName:b.firstName,lastName:b.lastName,phone:b.phone,email:b.email,position:b.position,department:b.department}});
+else if(resource==='classes'||resource==='class')row=await db.class.create({data:{schoolId,name:b.name,level:b.level}});
+else if(resource==='subjects')row=await db.subject.create({data:{schoolId,name:b.name,code:b.code}});
+else if(resource==='announcements')row=await db.announcement.create({data:{schoolId,title:b.title,body:b.body,audience:b.audience||'all',published:b.published!==false}});
+else if(resource==='documents')row=await db.document.create({data:{schoolId,title:b.title,category:b.category||'general',url:b.url||''}});
+else if(resource==='subscriptions')row=await db.subscription.create({data:{schoolId,plan:b.plan||'termly',status:b.status||'pending',startAt:new Date(),endAt:b.endAt?new Date(b.endAt):null,provider:b.provider,providerRef:b.providerRef}});
+else if(resource==='fees'||resource==='finance')row=await db.feeCharge.create({data:{schoolId,studentId:b.studentId,sessionId:b.sessionId||null,title:b.title||'School fees',amount:b.amount,dueDate:b.dueDate?new Date(b.dueDate):null}});
+else if(resource==='payments')row=await db.payment.create({data:{schoolId,studentId:b.studentId||null,feeChargeId:b.feeChargeId||null,reference:b.reference,amount:b.amount,status:'PENDING',method:b.method}});
+else return json({error:'Unsupported create resource'},400);
+await audit({schoolId,userId:s.sub,action:'CREATE',entity:resource,entityId:row.id,metadata:{}});return json(row,201)}catch(e:any){return json({error:e.message},400)}}
